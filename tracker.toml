@@ -7,3 +7,8 @@ track = "latest"
 group = "Morphe"
 repo = "MorpheApp/morphe-desktop"
 track = "latest"
+
+[Morphe-Manager]
+group = "Morphe"
+repo = "MorpheApp/morphe-manager"
+track = "latest"
