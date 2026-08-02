@@ -1,16 +1,9 @@
-[[group]]
-id = "morphe"
-title = "Morphe"
-
-[[project]]
-name = "Patches"
+[Morphe-Patches]
+group = "Morphe"
 repo = "MorpheApp/morphe-patches"
-group = "morphe"
-track = "stable"
+track = "latest"
 
-[[project]]
-name = "Desktop"
+[Morpe-Desktop]
+group = "Morphe"
 repo = "MorpheApp/morphe-desktop"
-group = "morphe"
-track = "stable"
-
+track = "latest"
