@@ -1,0 +1,9 @@
+[[group]]
+id = "id-name"
+title = "title-name"
+
+[[project]]
+name = "project-name"
+repo = "owner/repository"
+group = "group-name"
+track = "stable"
