@@ -1,9 +1,9 @@
 [[group]]
-id = "id-name"
-title = "title-name"
+id = "morphe"
+title = "Morphe"
 
 [[project]]
-name = "project-name"
-repo = "owner/repository"
-group = "group-name"
+name = "Patches"
+repo = "MorpheApp/morphe-patches"
+group = "morphe"
 track = "stable"
