@@ -39,7 +39,6 @@ def get_target_release(releases, track):
             continue
         if track == "dev" and not r.get("prerelease"):
             continue
-        # "latest" accepts the first non-draft (whether stable or dev)
         return r
     return None
 
@@ -70,9 +69,15 @@ def main():
         print(f"::group::{group_name}")
         
         for project in projects:
+            brand_name = project["name"]
+            
+            # --- NEW: Check if project is enabled ---
+            if not project.get("enabled", True):
+                print(f"Skipping {brand_name} (Tracking disabled in config)")
+                continue
+
             repo = project["repo"]
             track = project["track"]
-            brand_name = project["name"]
             
             print(f"Checking {brand_name} ({repo} @ {track})...")
             releases = github_api("GET", f"/repos/{repo}/releases")
@@ -85,11 +90,8 @@ def main():
                 continue
                 
             tag = latest["tag_name"]
-            # Get the publish date (fallback to created_at if published_at is null)
             published_date = latest.get("published_at") or latest.get("created_at")
             
-            # 1. First layer check: Is this release newer chronologically than our saved date?
-            # Missing state defaults to an old date string so the first run always triggers
             last_seen_date = state.get(repo, "1970-01-01T00:00:00Z")
             
             if published_date > last_seen_date:
@@ -98,12 +100,11 @@ def main():
                 release_tag = f"{brand_name}-{tag}"
                 release_title = f"{brand_name} {tag}" 
                 
-                # 2. Second layer check: Does this release tag already exist in OUR repository?
                 existing_release = github_api("GET", f"/repos/{TARGET_REPO}/releases/tags/{release_tag}", silent_404=True)
                 
                 if existing_release:
                     print(f"-> Release {release_tag} already exists in tracker repo. Skipping.")
-                    state[repo] = published_date  # Sync the date in state.json anyway
+                    state[repo] = published_date  
                     continue
 
                 original_url = latest["html_url"]
@@ -121,7 +122,6 @@ def main():
                 
                 if response and "id" in response:
                     print(f"-> Published: {release_title}")
-                    # Save the timestamp instead of the version tag
                     state[repo] = published_date
 
         print("::endgroup::")
@@ -131,4 +131,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
