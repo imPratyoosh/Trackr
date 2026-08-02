@@ -7,3 +7,10 @@ name = "Patches"
 repo = "MorpheApp/morphe-patches"
 group = "morphe"
 track = "stable"
+
+[[project]]
+name = "Desktop"
+repo = "MorpheApp/morphe-desktop"
+group = "morphe"
+track = "stable"
+
