@@ -10,7 +10,7 @@ CONFIG_FILE = "tracker.toml"
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 TARGET_REPO = os.environ.get("GITHUB_REPOSITORY")
 
-def github_api(method, endpoint, data=None):
+def github_api(method, endpoint, data=None, silent_404=False):
     """Minimal wrapper for GitHub API requests."""
     url = f"https://api.github.com{endpoint}"
     req = urllib.request.Request(url, method=method)
@@ -25,6 +25,8 @@ def github_api(method, endpoint, data=None):
         with urllib.request.urlopen(req) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
+        if e.code == 404 and silent_404:
+            return None
         print(f"API Error ({url}): {e.code} - {e.read().decode('utf-8')}")
         return None
 
@@ -56,18 +58,15 @@ def main():
     except (FileNotFoundError, json.JSONDecodeError):
         state = {}
 
-    # Organize projects by group for GitHub Actions log tree
     grouped_projects = {}
     for repo_name, details in config.items():
         group_name = details.get("group", "ungrouped")
         if group_name not in grouped_projects:
             grouped_projects[group_name] = []
-        details["name"] = repo_name  # Store the TOML heading name
+        details["name"] = repo_name
         grouped_projects[group_name].append(details)
 
-    # Check for updates and publish
     for group_name, projects in grouped_projects.items():
-        # This tells GitHub Actions to create a collapsible log group
         print(f"::group::{group_name}")
         
         for project in projects:
@@ -86,42 +85,50 @@ def main():
                 continue
                 
             tag = latest["tag_name"]
+            # Get the publish date (fallback to created_at if published_at is null)
+            published_date = latest.get("published_at") or latest.get("created_at")
             
-            # Check if this is a new release
-            if state.get(repo) != tag:
-                print(f"-> New release found: {tag}")
+            # 1. First layer check: Is this release newer chronologically than our saved date?
+            # Missing state defaults to an old date string so the first run always triggers
+            last_seen_date = state.get(repo, "1970-01-01T00:00:00Z")
+            
+            if published_date > last_seen_date:
+                print(f"-> New release found (Published: {published_date})")
                 
-                # Format: "Patches-v1.2.0" for tag (avoids conflicts if 2 repos use v1.2.0)
                 release_tag = f"{brand_name}-{tag}"
-                # Format: "Patches v1.2.0" for title
                 release_title = f"{brand_name} {tag}" 
+                
+                # 2. Second layer check: Does this release tag already exist in OUR repository?
+                existing_release = github_api("GET", f"/repos/{TARGET_REPO}/releases/tags/{release_tag}", silent_404=True)
+                
+                if existing_release:
+                    print(f"-> Release {release_tag} already exists in tracker repo. Skipping.")
+                    state[repo] = published_date  # Sync the date in state.json anyway
+                    continue
+
                 original_url = latest["html_url"]
                 original_body = latest.get("body", "*No release notes provided.*")
                 
-                # Combine link with original body
                 body = f"[View original release on GitHub]({original_url})\n\n---\n\n{original_body}"
                 
-                # Publish individual release
                 response = github_api("POST", f"/repos/{TARGET_REPO}/releases", data={
                     "tag_name": release_tag,
                     "name": release_title,
                     "body": body,
                     "draft": False,
-                    # Mark as prerelease if original was a prerelease (dev track)
                     "prerelease": latest.get("prerelease", False) 
                 })
                 
                 if response and "id" in response:
                     print(f"-> Published: {release_title}")
-                    state[repo] = tag
+                    # Save the timestamp instead of the version tag
+                    state[repo] = published_date
 
-        # Close the GitHub Actions log group
         print("::endgroup::")
 
-    # Save updated state
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
 
 if __name__ == "__main__":
     main()
-                
+    
