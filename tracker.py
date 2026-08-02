@@ -3,7 +3,6 @@ import json
 import tomllib
 import urllib.request
 import urllib.error
-from datetime import datetime, timezone
 
 # --- CONFIGURATION ---
 STATE_FILE = "state.json"
@@ -36,15 +35,15 @@ def get_target_release(releases, track):
             continue
         if track == "stable" and r.get("prerelease"):
             continue
-        if track == "prerelease" and not r.get("prerelease"):
+        if track == "dev" and not r.get("prerelease"):
             continue
-        # "latest" accepts the first non-draft (stable or prerelease)
+        # "latest" accepts the first non-draft (whether stable or dev)
         return r
     return None
 
 def main():
     if not GITHUB_TOKEN or not TARGET_REPO:
-        print("Error: GITHUB_TOKEN and GITHUB_REPOSITORY environment variables are required.")
+        print("Error: GITHUB_TOKEN and GITHUB_REPOSITORY are required.")
         return
 
     # Load Config and State
@@ -57,70 +56,67 @@ def main():
     except (FileNotFoundError, json.JSONDecodeError):
         state = {}
 
-    groups = {g["id"]: g["title"] for g in config.get("group", [])}
-    updates_by_group = {}
+    # Organize projects by group for GitHub Actions log tree
+    grouped_projects = {}
+    for repo_name, details in config.items():
+        group_name = details.get("group", "ungrouped")
+        if group_name not in grouped_projects:
+            grouped_projects[group_name] = []
+        details["name"] = repo_name  # Store the TOML heading name
+        grouped_projects[group_name].append(details)
 
-    # Check for updates
-    for project in config.get("project", []):
-        repo = project["repo"]
-        track = project["track"]
-        group_id = project["group"]
+    # Check for updates and publish
+    for group_name, projects in grouped_projects.items():
+        # This tells GitHub Actions to create a collapsible log group
+        print(f"::group::{group_name}")
         
-        print(f"Checking {repo} ({track})...")
-        releases = github_api("GET", f"/repos/{repo}/releases")
-        
-        if not releases:
-            continue
+        for project in projects:
+            repo = project["repo"]
+            track = project["track"]
+            brand_name = project["name"]
             
-        latest = get_target_release(releases, track)
-        if not latest:
-            continue
+            print(f"Checking {brand_name} ({repo} @ {track})...")
+            releases = github_api("GET", f"/repos/{repo}/releases")
             
-        tag = latest["tag_name"]
-        
-        # If it's a new release we haven't seen yet
-        if state.get(repo) != tag:
-            if group_id not in updates_by_group:
-                updates_by_group[group_id] = []
+            if not releases:
+                continue
                 
-            updates_by_group[group_id].append({
-                "project_name": project["name"],
-                "repo": repo,
-                "tag": tag,
-                "url": latest["html_url"],
-                "body": latest.get("body", "*No release notes provided.*")
-            })
+            latest = get_target_release(releases, track)
+            if not latest:
+                continue
+                
+            tag = latest["tag_name"]
+            
+            # Check if this is a new release
+            if state.get(repo) != tag:
+                print(f"-> New release found: {tag}")
+                
+                # Format: "Patches-v1.2.0" for tag (avoids conflicts if 2 repos use v1.2.0)
+                release_tag = f"{brand_name}-{tag}"
+                # Format: "Patches v1.2.0" for title
+                release_title = f"{brand_name} {tag}" 
+                original_url = latest["html_url"]
+                original_body = latest.get("body", "*No release notes provided.*")
+                
+                # Combine link with original body
+                body = f"[View original release on GitHub]({original_url})\n\n---\n\n{original_body}"
+                
+                # Publish individual release
+                response = github_api("POST", f"/repos/{TARGET_REPO}/releases", data={
+                    "tag_name": release_tag,
+                    "name": release_title,
+                    "body": body,
+                    "draft": False,
+                    # Mark as prerelease if original was a prerelease (dev track)
+                    "prerelease": latest.get("prerelease", False) 
+                })
+                
+                if response and "id" in response:
+                    print(f"-> Published: {release_title}")
+                    state[repo] = tag
 
-    # Publish Consolidated Releases
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
-    
-    for group_id, updates in updates_by_group.items():
-        group_title = groups.get(group_id, group_id.title())
-        release_tag = f"{group_id}-{timestamp}"
-        release_name = f"{group_title} Updates - {timestamp}"
-        
-        # Build Release Markdown
-        body = f"Consolidated release for **{group_title}** projects.\n\n"
-        for u in updates:
-            body += f"## {u['project_name']} (`{u['tag']}`)\n"
-            body += f"[View original release on GitHub]({u['url']})\n\n"
-            body += f"{u['body']}\n\n---\n"
-
-        print(f"Publishing consolidated release: {release_name}")
-        
-        # Create the release in the current tracker repository
-        response = github_api("POST", f"/repos/{TARGET_REPO}/releases", data={
-            "tag_name": release_tag,
-            "name": release_name,
-            "body": body,
-            "draft": False,
-            "prerelease": False
-        })
-        
-        # If release creation was successful, update the state
-        if response and "id" in response:
-            for u in updates:
-                state[u["repo"]] = u["tag"]
+        # Close the GitHub Actions log group
+        print("::endgroup::")
 
     # Save updated state
     with open(STATE_FILE, "w", encoding="utf-8") as f:
@@ -128,4 +124,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
+                
