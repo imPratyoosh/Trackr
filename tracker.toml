@@ -1,0 +1,9 @@
+[[group]]
+id = "morphe"
+title = "Morphe"
+
+[[project]]
+name = "Patches"
+repo = "MorpheApp/morphe-patches"
+group = "morphe"
+track = "stable"
