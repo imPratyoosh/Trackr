@@ -3,7 +3,7 @@ group = "Morphe"
 repo = "MorpheApp/morphe-patches"
 track = "latest"
 
-[Morpe-Desktop]
+[Morphe-Desktop]
 group = "Morphe"
 repo = "MorpheApp/morphe-desktop"
 track = "latest"
