@@ -1,10 +1,9 @@
 name: Tracker
 
 on:
-  schedule:
-    - cron: '0 * * * *'   # Runs at minute 0 past every hour
+  schedule: 
+  - cron: '17 * * * *'
   workflow_dispatch:      # Allows manual triggering from the Actions tab
-
 
 permissions:
   contents: write         # Required to create releases and push state.json
