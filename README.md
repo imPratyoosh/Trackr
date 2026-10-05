@@ -4,6 +4,8 @@
   />
 
 
+## For personal use only
+
 ## About 
 This is a modular repository, used to track updates of various GitHub repositories.
 + `check.yml` runs every hour and searches for new releases and if found it'll be automatically published in this repository with it's release notes.
